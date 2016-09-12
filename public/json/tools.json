@@ -1,0 +1,17 @@
+[
+	{
+		"NAME":"blue",
+		"DMG":20,
+		"SPD":150,
+		"STR":60,
+		"RNG":75,
+		"sprite":"pickAxe"
+	},{
+		"NAME":"red",
+		"DMG":10,
+		"SPD":450,
+		"STR":60,
+		"RNG":75,
+		"sprite":"pickAxe"
+	}
+]
