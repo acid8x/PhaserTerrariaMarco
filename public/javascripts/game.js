@@ -7,8 +7,8 @@ var game = new Phaser.Game(1280, 736, Phaser.CANVAS, '', {
 
 var map,
     layer = [],
-    socket,
     player,
+    isDrag = false,
     gui = {},
     tools = [],
     style = {
@@ -17,7 +17,7 @@ var map,
         align: "center"
     };
 
-function preload() { //function preload () {
+function preload() {
 
     game.load.tilemap('map', '../images/tiles.json', null, Phaser.Tilemap.TILED_JSON);
     game.load.image('tiles', '../images/tiles.png');
@@ -30,7 +30,7 @@ function preload() { //function preload () {
 
 }
 
-function create() { //function create () {
+function create() {
 
     game.physics.startSystem(Phaser.Physics.ARCADE);
 
@@ -44,7 +44,7 @@ function create() { //function create () {
 
 }
 
-function update() { //function update () {
+function update() {
 
     game.physics.arcade.collide(player, layer[1]);
 
@@ -52,11 +52,11 @@ function update() { //function update () {
 
 }
 
-function render() { //function render () {
+function render() {
     game.debug.body(player);
 }
 
-function createMap() { //function createMap() {
+function createMap() {
 
     map = game.add.tilemap('map');
     map.addTilesetImage('tiles', 'tiles');
@@ -72,10 +72,9 @@ function createMap() { //function createMap() {
     layer[2] = map.createLayer('Tile Layer 3');
 
     layer[0].resizeWorld();
-
 }
 
-function createPlayer() { //function createPlayer() {
+function createPlayer() {
 
     player = game.add.sprite(50, 50, 'player');
     game.physics.arcade.enable(player);
@@ -125,21 +124,27 @@ function createPlayer() { //function createPlayer() {
 
 }
 
-function createTileMarker() { //function createTileMarker() {
+function createTileMarker() {
 
     player.marker.lineStyle(2, 0x000000, 1);
     player.marker.drawRect(0, 0, 32, 32);
 
 }
 
-function updateMarker() { //function updateMarker() {
+function updateMarker() {
 
     player.marker.x = layer[1].getTileX(game.input.activePointer.worldX) * 32;
     player.marker.y = layer[1].getTileY(game.input.activePointer.worldY) * 32;
+    var tile = map.layers[1].data[player.marker.y / 32][player.marker.x / 32].index;
+    var guiHeight = 64;
+    if (gui.inventory.alpha == 1) guiHeight = 252;
+    var isOverGui = intersectRect(player.marker.x, player.marker.y,32,32,game.camera.x,game.camera.y,460,guiHeight);
+    if (tile == -1 || isOverGui) player.marker.alpha = 0;
+    else player.marker.alpha = 1;
 
 }
 
-function createMenuGroup() { //function createInventoryMenuGroup() {
+function createMenuGroup() {
 
     gui.inventory = game.add.group();
 
@@ -158,8 +163,15 @@ function createMenuGroup() { //function createInventoryMenuGroup() {
 
     for (i = 0; i < 40; i++) {
         gui.inventory.socket[i] = {
+            background: game.make.graphics(),
             itemSprite: game.make.sprite(x+4,y+4,null)
         };
+        gui.inventory.socket[i].background.beginFill(0x666666, 0.7);
+        gui.inventory.socket[i].background.drawRoundedRect(x, y, 40, 40, 5);
+        gui.inventory.socket[i].background.endFill();
+        gui.inventory.socket[i].background.posX = x;
+        gui.inventory.socket[i].background.posY = y;
+        gui.inventory.add(gui.inventory.socket[i].background);
         gui.inventory.add(gui.inventory.socket[i].itemSprite);
         x += 44;
         if (x > 444) {
@@ -208,7 +220,7 @@ function createMenuGroup() { //function createInventoryMenuGroup() {
     gui.quickBar.socket[0].itemSprite.loadTexture(gui.quickBar.socket[0].item.sprite);
 }
 
-function createInputEvents() { //function createInputEvents() {
+function createInputEvents() {
 
     game.input.addMoveCallback(updateMarker, this);
 
@@ -217,14 +229,14 @@ function createInputEvents() { //function createInputEvents() {
 
 }
 
-function showInventoryMenu() { //function showInventoryMenu() {
+function showInventoryMenu() {
 
     gui.inventory.alpha = !gui.inventory.alpha;
     buildInventoryMenu();
 
 }
 
-function buildInventoryMenu() { //function buildInventoryMenu() {
+function buildInventoryMenu() {
 
     for (var i = 0; i < 40; i++) {
         if (player.inventory[i].tileIndex != -1) {
@@ -238,14 +250,17 @@ function buildInventoryMenu() { //function buildInventoryMenu() {
             }
             gui.inventory.socket[i].itemSprite.loadTexture('tilesSprite', player.inventory[i].tileIndex - 1);
             gui.inventory.socket[i].itemSprite.addChild(gui.inventory.socket[i].itemSprite.textSprite);
+            gui.inventory.socket[i].itemSprite.inventoryIndex = i;
             gui.inventory.socket[i].itemSprite.inputEnabled = true;
             gui.inventory.socket[i].itemSprite.input.enableDrag(true);
+            gui.inventory.socket[i].itemSprite.events.onDragStart.add(onDragStart, this);
+            gui.inventory.socket[i].itemSprite.events.onDragStop.add(onDragStop, this);
         }
     }
 
 }
 
-function updatePlayerMovements() { //function updatePlayerMovements() {
+function updatePlayerMovements() {
 
     player.body.velocity.x = 0;
 
@@ -287,7 +302,7 @@ function updatePlayerMovements() { //function updatePlayerMovements() {
     }
     
     if (player.toolSprite != null) {
-        if (game.input.mousePointer.leftButton.isDown) {
+        if (game.input.mousePointer.leftButton.isDown && !isDrag) {
             player.toolSprite.body.angularVelocity = player.equipment.tool.SPD;
             hitTile(map.layers[1].data[player.marker.y / 32][player.marker.x / 32]);
             updateMarker();
@@ -299,8 +314,9 @@ function updatePlayerMovements() { //function updatePlayerMovements() {
 
 }
 
-function mouseWheel() { //function mouseWheel() {
+function mouseWheel() {
 
+    console.log(gui.inventory.socket[1].background);
     var i = player.useQuickBarItem + game.input.mouse.wheelDelta;
     if (i < 0) i = 9;
     else if (i > 9) i = 0;
@@ -309,7 +325,32 @@ function mouseWheel() { //function mouseWheel() {
 
 }
 
-function useItemNumber(num) { //function useItemNumber(num) {
+function onDragStart(sprite, pointer) {
+
+    isDrag = true;
+
+}
+
+function onDragStop(sprite, pointer) {
+
+    isDrag = false;
+    var x = pointer.x;
+    var y = pointer.y;
+    var index = -1;
+    if (x < 456 && y < 248 && x > 16 & y > 16) {
+        y -= 8;
+        x -= 16;
+        var row = parseInt(y/48);
+        var col = parseInt(x/44);
+        index = (row*10)+col;
+    }
+    console.log(index);
+    sprite.x = gui.inventory.socket[sprite.inventoryIndex].background.posX + 4;
+    sprite.y = gui.inventory.socket[sprite.inventoryIndex].background.posY + 4;
+
+}
+
+function useItemNumber(num) {
 
     if (player.useQuickBarItem != num) {
         if (player.useQuickBarItem != null) {
@@ -332,7 +373,7 @@ function useItemNumber(num) { //function useItemNumber(num) {
 
 }
 
-function hitTile(tile) { //function isTileDestroy(tile) {
+function hitTile(tile) {
 
     var distance = Math.sqrt((Math.pow(player.position.x - tile.worldX,2)+Math.pow(player.position.y - tile.worldY,2)));
 
@@ -359,7 +400,7 @@ function hitTile(tile) { //function isTileDestroy(tile) {
 
 }
 
-function sendToInventory(tile) { //function sendToInventory(tile) {
+function sendToInventory(tile) {
 
     var tileFound = false;
     var emptySlotId = -1;
@@ -382,5 +423,17 @@ function sendToInventory(tile) { //function sendToInventory(tile) {
     }
 
     buildInventoryMenu();
+
+}
+
+function intersectRect(x1,y1,width1,height1,x2,y2,width2,height2) {
+
+    var r1 = { left: x1, top: y1, right: x1 + width1, bottom: y1 + height1 };
+    var r2 = { left: x2, top: y2, right: x2 + width2, bottom: y2 + height2 };
+
+    return !(r2.left > r1.right ||
+    r2.right < r1.left ||
+    r2.top > r1.bottom ||
+    r2.bottom < r1.top);
 
 }
